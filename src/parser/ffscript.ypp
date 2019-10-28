@@ -28,10 +28,8 @@ string curfilename;
 extern YYLTYPE noloc;
 
 #define SHORTCUT(x,d1,d3,dd,l1,l2) ASTExpr *lval = (ASTExpr *)d1; \
-					Clone c; \
-					lval->execute(c,NULL); \
 					x *rhs = new x(l2); \
-					rhs->setFirstOperand((ASTExpr *)c.getResult()); \
+					rhs->setFirstOperand(lval->clone()); \
 					rhs->setSecondOperand((ASTExpr *)d3); \
 					dd = new ASTStmtAssign(lval, rhs, l1);
 %}
@@ -46,6 +44,9 @@ extern YYLTYPE noloc;
 %token ZVOID
 %token IF
 %token ELSE
+%token SWITCH
+%token CASE
+%token DEFAULT
 %token RETURN
 %token IMPORT
 %token ZTRUE
@@ -62,8 +63,29 @@ extern YYLTYPE noloc;
 %token NPC
 %token LWEAPON
 %token EWEAPON
+%token GRAPHICS
+%token SPRITEDATA
+%token MAPDATA
+%token NPCDATA
+%token COMBODATA
+%token DMAPDATA
+%token MESSAGEDATA
+%token SHOPDATA
+%token UNTYPED
+%token DROPDATA
+%token PONDDATA
+%token WARPRING
+%token DOORSET
+%token MISCCOLORS
+%token RGBDATA
+%token PALETTE
+%token MUSICTRACK
+%token PALCYCLE
+%token GAMEDATA
+%token CHEATS
 
 %token ASSIGN
+%token COLON
 %token SEMICOLON
 %token COMMA
 %token LBRACKET
@@ -102,6 +124,9 @@ extern YYLTYPE noloc;
 %left TIMES DIVIDE
 %left MODULO
 
+%token PREPROCESS
+%token DEFINE
+
 
 %%
 
@@ -120,13 +145,17 @@ GlobalStmt : Script {$$ = $1;}
 	| ConstDecl {$$ = $1;}
 	| VarDecl SEMICOLON {$$ = $1;}
 	| VarDecl ASSIGN Expr SEMICOLON {ASTVarDecl *vd = (ASTVarDecl *)$1;
-									Clone c;
-									vd->getType()->execute(c,NULL);
-									$$ = new ASTVarDeclInitializer((ASTType *)c.getResult(), vd->getName(), (ASTExpr *)$3,@1);
+									$$ = new ASTVarDeclInitializer(vd->getType()->clone(), vd->getName(), (ASTExpr *)$3,@1);
 									delete vd;}
 	| ArrayDecl SEMICOLON {$$ = $1;}
 	;
 
+//DefineDecl : PREPROCESS DEFINE IDENTIFIER WS NUMBER WS {ASTString *name = (ASTString *)$3;
+//															ASTFloat *val = (ASTFloat *)$5;
+//															$$ = new ASTConstDecl(name->getValue(), val,@1);
+//															delete name;}
+//	;
+	
 ConstDecl : ZCONST ZFLOAT IDENTIFIER ASSIGN NUMBER SEMICOLON {ASTString *name = (ASTString *)$3;
 															ASTFloat *val = (ASTFloat *)$5;
 															$$ = new ASTConstDecl(name->getValue(), val,@1);
@@ -136,40 +165,60 @@ ConstDecl : ZCONST ZFLOAT IDENTIFIER ASSIGN NUMBER SEMICOLON {ASTString *name = 
 																  val->set_negative(true);
 																  $$ = new ASTConstDecl(name->getValue(), val,@1);
 																  delete name;}
+																  
+	 | ZCONST UNTYPED IDENTIFIER ASSIGN NUMBER SEMICOLON {ASTString *name = (ASTString *)$3;
+															ASTFloat *val = (ASTFloat *)$5;
+															$$ = new ASTConstDecl(name->getValue(), val,@1);
+															delete name;}
+          | ZCONST UNTYPED IDENTIFIER ASSIGN MINUS NUMBER SEMICOLON {ASTString *name = (ASTString *)$3;
+																  ASTFloat *val = (ASTFloat *)$6;
+																  val->set_negative(true);
+																  $$ = new ASTConstDecl(name->getValue(), val,@1);
+																  delete name;}
+	//The following does not compile: error PRJ0019: A tool returned an error code from "[BISON][ZScriptParser] Building parser with bison 2.7"															
+//          | PREPROCESS DEFINE IDENTIFIER NUMBER WS {ASTString *name = (ASTString *)$3;
+//															ASTFloat *val = (ASTFloat *)$4;
+//															$$ = new ASTConstDecl(name->getValue(), val,@1);
+//															delete name;}
+//																  
+//	  | PREPROCESS DEFINE IDENTIFIER MINUS NUMBER WS {ASTString *name = (ASTString *)$3;
+//																  ASTFloat *val = (ASTFloat *)$5;
+//																  val->set_negative(true);
+//																  $$ = new ASTConstDecl(name->getValue(), val,@1);
+//																  delete name;}
+//          ;
 
-ArrayDecl : Type IDENTIFIER LBRACKET NUMBER RBRACKET {	ASTType *type = (ASTType *)$1;
+ArrayDecl : Type IDENTIFIER LBRACKET ConstExpr RBRACKET {	ASTType *type = (ASTType *)$1;
 														ASTString *name = (ASTString *)$2;
-														ASTExpr *size = (ASTExpr *)$4;
-														$$ = new ASTArrayDecl(type, name->getValue(), size, false, NULL, @1);
+														ASTExprConst *size = (ASTExprConst *)$4;
+														$$ = new ASTArrayDecl(type, name->getValue(), size, NULL, @1);
 														delete name;}
 
-	| Type IDENTIFIER LBRACKET NUMBER RBRACKET ASSIGN LBRACE ArrayList RBRACE {	ASTType *type = (ASTType *)$1;
+	| Type IDENTIFIER LBRACKET ConstExpr RBRACKET ASSIGN LBRACE ArrayList RBRACE {	ASTType *type = (ASTType *)$1;
 																				ASTString *name = (ASTString *)$2;
-																				ASTFloat *size = (ASTFloat *)$4;
+																				ASTExprConst *size = (ASTExprConst *)$4;
 																				ASTArrayList *list = (ASTArrayList *)$8;
-																				$$ = new ASTArrayDecl(type, name->getValue(), size, false, list, @1);
+																				$$ = new ASTArrayDecl(type, name->getValue(), size, list, @1);
 																				delete name;}
  	| Type IDENTIFIER LBRACKET RBRACKET ASSIGN LBRACE ArrayList RBRACE {	ASTType *type = (ASTType *)$1;
 																			ASTString *name = (ASTString *)$2;
 																			ASTArrayList *list = (ASTArrayList *)$7;
 																			char val[15];
 																			sprintf(val, "%d", list->getList().size());
-																			ASTFloat *size = new ASTFloat(val, 0, @1);
-																			$$ = new ASTArrayDecl(type, name->getValue(), size, false, list, @1);
+																			ASTExpr *size = new ASTNumConstant(new ASTFloat(val, 0, @1), @1);
+																			$$ = new ASTArrayDecl(type, name->getValue(), size, list, @1);
 																			delete name;}
 
-	| Type IDENTIFIER LBRACKET NUMBER RBRACKET ASSIGN QUOTEDSTRING {	ASTType *type = (ASTType *)$1;
+	| Type IDENTIFIER LBRACKET ConstExpr RBRACKET ASSIGN QUOTEDSTRING {	ASTType *type = (ASTType *)$1;
 																		ASTString *name = (ASTString *)$2;
-																		ASTFloat *size = (ASTFloat *)$4;
+																		ASTExprConst *size = (ASTExprConst *)$4;
 																		ASTArrayList *list = new ASTArrayList(@1);
-																		list->makeString();
 																		ASTString *string = (ASTString *)$7;
 
-																		for(unsigned int i=1; i < string->getValue().length()-1; i++)
-																			list->addParam(new ASTNumConstant(new ASTFloat(long((string->getValue())[i]), 0, @1), @1));
+																		list->makeString();
+																		list->addString(string->getValue());
 
-																		list->addParam(new ASTNumConstant(new ASTFloat(0L, 0, @1), @1));
-																		$$ = new ASTArrayDecl(type, name->getValue(), size, false, list, @1);
+																		$$ = new ASTArrayDecl(type, name->getValue(), size, list, @1);
 																		delete name;}
 
  	| Type IDENTIFIER LBRACKET RBRACKET ASSIGN QUOTEDSTRING {	ASTType *type = (ASTType *)$1;
@@ -177,13 +226,13 @@ ArrayDecl : Type IDENTIFIER LBRACKET NUMBER RBRACKET {	ASTType *type = (ASTType 
 																ASTArrayList *list = new ASTArrayList(@1);
 																list->makeString();
 																ASTString *string = (ASTString *)$6;
-																ASTFloat *size = new ASTFloat(string->getValue().length()-1, 0, @1);
+																ASTExpr *size = new ASTNumConstant(new ASTFloat(string->getValue().length()-1, 0, @1), @1);
 
 																for(unsigned int i=1; i < string->getValue().length()-1; i++)
 																	list->addParam(new ASTNumConstant(new ASTFloat(long((string->getValue())[i]), 0, @1), @1));
 
 																list->addParam(new ASTNumConstant(new ASTFloat(0L, 0, @1), @1));
-																$$ = new ASTArrayDecl(type, name->getValue(), size, false, list, @1);
+																$$ = new ASTArrayDecl(type, name->getValue(), size, list, @1);
 																delete name;}
 	;
 
@@ -197,24 +246,17 @@ ArrayList : ArrayList COMMA Expr {	ASTArrayList *al = (ASTArrayList *)$1;
 				$$=al;}
 	;
 
-Script : ScriptType SCRIPT IDENTIFIER ScriptBlock {ASTType *type = (ASTType *)$1;
-												   int scripttype; //Itemdata pointer instead of item pointer
-												   ExtractType temp;
-												   type->execute(temp, &scripttype);
-												   if(scripttype == ScriptParser::TYPE_ITEM)
-												   {
-													  ASTType *t = type; //so we can keep the locationdata before deleting
-													  type = new ASTTypeItemclass(type->getLocation());
-													  delete t;
-												   }
+Script : ScriptType SCRIPT IDENTIFIER ScriptBlock {
+			ASTScriptType *type = (ASTScriptType*)$1;
 												   ASTString *name = (ASTString *)$3;
 												   ASTDeclList *sblock = (ASTDeclList *)$4;
 												   $$ = new ASTScript(type, name->getValue(), sblock,@1);
 												   delete name;}
 	;
 
-ScriptType : Type {$$ = $1;}
-		   | GLOBAL {$$ = new ASTTypeGlobal(@1);}
+ScriptType : GLOBAL {$$ = new ASTScriptType(SCRIPTTYPE_GLOBAL, @1);}
+	| FFC {$$ = new ASTScriptType(SCRIPTTYPE_FFC, @1);}
+	| ITEM {$$ = new ASTScriptType(SCRIPTTYPE_ITEM, @1);}
 		   ;
 
 Import : IMPORT QUOTEDSTRING	{ASTString *str = (ASTString *)$2;
@@ -237,9 +279,7 @@ ScriptStmtList : ScriptStmt ScriptStmtList {ASTDeclList *dl = (ASTDeclList *)$2;
 ScriptStmt : VarDecl SEMICOLON {$$ = $1;}
 	| ArrayDecl SEMICOLON {$$ = $1;}
 	| VarDecl ASSIGN Expr SEMICOLON {ASTVarDecl *vd = (ASTVarDecl *)$1;
-						   Clone c;
-						   vd->getType()->execute(c,NULL);
-						   $$ = new ASTVarDeclInitializer((ASTType *)c.getResult(), vd->getName(), (ASTExpr *)$3,@1);
+						   $$ = new ASTVarDeclInitializer(vd->getType()->clone(), vd->getName(), (ASTExpr *)$3,@1);
 						   delete vd;}
 	| FuncDecl {$$ = $1;}
 	;
@@ -259,6 +299,26 @@ Type : ZFLOAT {$$ = new ASTTypeFloat(@1);}
 	| NPC		{$$ = new ASTTypeNPC(@1);}
 	| LWEAPON	{$$ = new ASTTypeLWpn(@1);}
 	| EWEAPON	{$$ = new ASTTypeEWpn(@1);}
+	| SPRITEDATA	{$$ = new ASTTypeSpriteData(@1);}
+	| MAPDATA	{$$ = new ASTTypeMapData(@1);}
+	| NPCDATA	{$$ = new ASTTypeNPCData(@1);}
+	| COMBODATA	{$$ = new ASTTypeComboData(@1);}
+	| GRAPHICS	{$$ = new ASTTypeGraphics(@1);}
+	| DMAPDATA	{$$ = new ASTTypeDMap(@1);}
+	| MESSAGEDATA	{$$ = new ASTTypeZMsg(@1);}
+	| SHOPDATA	{$$ = new ASTTypeShopData(@1);}
+//	| UNTYPED	{$$ = new ASTTypeUntyped(@1);}
+	| DROPDATA	{$$ = new ASTTypeDropsets(@1);}
+	| PONDDATA	{$$ = new ASTTypePonds(@1);}
+	| WARPRING	{$$ = new ASTTypeWarprings(@1);}
+	| DOORSET	{$$ = new ASTTypeDoorsets(@1);}
+	| MISCCOLORS	{$$ = new ASTTypeZColours(@1);}
+	| RGBDATA	{$$ = new ASTTypeRGB(@1);}
+	| PALETTE	{$$ = new ASTTypePalette(@1);}
+	| MUSICTRACK	{$$ = new ASTTypeTunes(@1);}
+	| PALCYCLE	{$$ = new ASTTypePalCycle(@1);}
+	| GAMEDATA	{$$ = new ASTTypeGamedata(@1);}
+	| CHEATS	{$$ = new ASTTypeCheats(@1);}
 	;
 
 FuncDecl : Type IDENTIFIER LPAREN ParamList RPAREN Block {ASTFuncDecl *fd = (ASTFuncDecl *)$4;
@@ -293,12 +353,14 @@ Block : LBRACE StmtList RBRACE  {$$=$2;}
 	| LBRACE RBRACE {$$ = new ASTBlock(@1);}
 	;
 
-StmtList : StmtList Stmt {ASTBlock *block = (ASTBlock *)$1;
-				  ASTStmt *stmt = (ASTStmt *)$2;
+StmtList : Stmt {
+			ASTStmt* stmt = (ASTStmt*)$1;
+			ASTBlock *block = new ASTBlock(@1);
 				  block->addStatement(stmt);
 				  $$ = block;}
-	| Stmt {ASTBlock *block = new ASTBlock(@1);
-		  ASTStmt *stmt = (ASTStmt *)$1;
+  | StmtList Stmt {
+			ASTBlock *block = (ASTBlock *)$1;
+			ASTStmt *stmt = (ASTStmt *)$2;
 		  block->addStatement(stmt);
 		  $$ = block;}
 	;
@@ -309,6 +371,7 @@ Stmt : VarDecl SEMICOLON {$$ = $1;}
 	| ShortcutAssignStmt SEMICOLON {$$=$1;}
 	| ForStmt {$$ = $1;}
 	| IfStmt {$$ = $1;}
+	| SwitchStmt {$$ = $1;}
 	| Block {$$ = $1;}
 	| ReturnStmt SEMICOLON {$$ = $1;}
 	| WhileStmt {$$ = $1;}
@@ -325,6 +388,7 @@ StmtNoSemi : VarDecl {$$ = $1;}
 	| ShortcutAssignStmt {$$=$1;}
 	| ForStmt {$$ = $1;}
 	| IfStmt {$$ = $1;}
+	| SwitchStmt {$$ = $1;}
 	| Block {$$ = $1;}
 	| ReturnStmt {$$ = $1;}
 	| WhileStmt {$$ = $1;}
@@ -390,7 +454,20 @@ DotExpr : IDENTIFIER DOT IDENTIFIER {ASTString *lval = (ASTString *)$1;
 													   $$ = res;}
 	;
 
-Expr : Expr OR Expr15 {ASTLogExpr *e = new ASTExprOr(@2);
+ConstExpr : Expr {
+		ASTExpr *content = (ASTExpr*)$1;
+		$$ = new ASTExprConst(content, @1);}
+	;
+
+Expr : Expr1 {$$ = $1;}
+	| QUOTEDSTRING {
+			ASTString* rawstring = (ASTString*)$1;
+			ASTStringConstant* str = new ASTStringConstant(*rawstring);
+			delete rawstring;
+			$$ = str;}
+	;
+
+Expr1 : Expr1 OR Expr15 {ASTLogExpr *e = new ASTExprOr(@2);
 				 ASTExpr *left = (ASTExpr *)$1;
 				 ASTExpr *right = (ASTExpr *)$3;
 				 e->setFirstOperand(left);
@@ -582,6 +659,48 @@ IfStmt : IF LPAREN Expr RPAREN Stmt {ASTExpr *cond = (ASTExpr *)$3;
 										ASTStmt *elsestmt = (ASTStmt *)$7;
 										$$ = new ASTStmtIfElse(cond,ifstmt,elsestmt,@1);}
 	;
+
+SwitchStmt : SWITCH LPAREN Expr RPAREN LBRACE SwitchStmt1 RBRACE {
+		ASTExpr* key = (ASTExpr*)$3;
+		ASTStmtSwitch* sw = (ASTStmtSwitch*)$6;
+		sw->setKey(key);
+		$$ = sw;}
+	;
+SwitchStmt1 : SwitchCases StmtList {
+			ASTStmtSwitch* sw = new ASTStmtSwitch(@$);
+			ASTSwitchCases* cases = (ASTSwitchCases*)$1;
+			ASTBlock* block = (ASTBlock*)$2;
+			cases->setBlock(block);
+			sw->addCases(cases);
+			$$ = sw;}
+	| SwitchStmt1 SwitchCases StmtList {
+			ASTStmtSwitch* sw = (ASTStmtSwitch*)$1;
+			ASTSwitchCases* cases = (ASTSwitchCases*)$2;
+			ASTBlock* block = (ASTBlock*)$3;
+			cases->setBlock(block);
+			sw->addCases(cases);
+			$$ = sw;}
+	;
+SwitchCases : CASE ConstExpr COLON {
+			ASTSwitchCases* cases = new ASTSwitchCases(@$);
+			ASTExprConst* key = (ASTExprConst*)$2;
+			cases->addCase(key);
+			$$ = cases;}
+	| DEFAULT COLON {
+			ASTSwitchCases* cases = new ASTSwitchCases(@$);
+			cases->addDefaultCase();
+			$$ = cases;}
+	| SwitchCases CASE ConstExpr COLON {
+			ASTSwitchCases* cases = (ASTSwitchCases*)$1;
+			ASTExprConst* key = (ASTExprConst*)$3;
+			cases->addCase(key);
+			$$ = cases;}
+	| SwitchCases DEFAULT COLON {
+			ASTSwitchCases* cases = (ASTSwitchCases*)$1;
+			cases->addDefaultCase();
+			$$ = cases;}
+	;
+
 
 ReturnStmt : RETURN Expr {$$ = new ASTStmtReturnVal((ASTExpr *)$2,@1);}
 	| RETURN {$$ = new ASTStmtReturn(@1);}
