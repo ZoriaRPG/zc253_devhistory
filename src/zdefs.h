@@ -178,7 +178,7 @@ enum {ENC_METHOD_192B104=0, ENC_METHOD_192B105, ENC_METHOD_192B185, ENC_METHOD_2
 #define V_TILES            1
 #define V_COMBOS           7
 #define V_CSETS            4
-#define V_MAPS            18
+#define V_MAPS            19
 #define V_DMAPS            9
 #define V_DOORS            1
 #define V_ITEMS           25
@@ -1419,6 +1419,12 @@ struct mapscr
     short screen_midi;
     byte lens_layer;
     
+    //Experiental: Guy Strings
+    byte numnpcstr;
+    std::vector<word> npcstrings;
+    //byte numextraitems;
+    //std::vector<signed short> extraitems;
+    
     
     void zero_memory()
     {
@@ -1570,6 +1576,10 @@ struct mapscr
         data.assign(176,0);
         sflag.assign(176,0);
         cset.assign(176,0);
+	
+	//NPC Dialogue
+	numnpcstr=1; //should the min be 1 or 0?
+	npcstrings.assign(numnpcstr,0);
         //data.assign(data.size(),0);
         //sflag.assign(sflag.size(),0);
         //cset.assign(cset.size(),0);
@@ -1581,6 +1591,7 @@ struct mapscr
         data.resize(176,0);
         sflag.resize(176,0);
         cset.resize(176,0);
+        npcstrings.resize(numnpcstr,0);
         zero_memory();
     }
     

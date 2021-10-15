@@ -8161,6 +8161,27 @@ int writemapscreen(PACKFILE *f, int i, int j)
             }
         }
     }
+    //if(!p_putc(screen.numnpcstr,f))
+    unsigned char npcstrsize = zc_max(1,screen.numnpcstr);
+    if(!p_putc(npcstrsize,f))
+    {
+	return qe_invalid;
+    }
+    //for(int k=0; k<(screen.numnpcstr); k++)
+    for(int k=0; k<(npcstrsize); k++)
+    {
+        try
+        {
+            if(!p_iputw(screen.npcstrings.at(k),f))
+            {
+                return qe_invalid;
+            }
+        }
+        catch(std::out_of_range& e)
+        {
+            return qe_invalid;
+        }
+    }
     
     return qe_OK;
 }

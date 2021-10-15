@@ -9644,7 +9644,7 @@ darknuts:
 
 int readmapscreen(PACKFILE *f, zquestheader *Header, mapscr *temp_mapscr, zcmap *temp_map, word version)
 {
-    byte tempbyte, padding;
+    byte tempbyte, padding, numnpcstr;
     int extras, secretcombos;
     
     if(!p_getc(&(temp_mapscr->valid),f,true))
@@ -10901,7 +10901,7 @@ int readmapscreen(PACKFILE *f, zquestheader *Header, mapscr *temp_mapscr, zcmap 
                     }
                     
                     temp_mapscr->inita[m][1]=tempbyte*10000;
-                }
+                }	
                 else
                 {
                     temp_mapscr->inita[m][0] = 10000;
@@ -10914,6 +10914,15 @@ int readmapscreen(PACKFILE *f, zquestheader *Header, mapscr *temp_mapscr, zcmap 
                 {
                     fixffcs=true;
                 }
+		
+			//add in the new whistle flags
+		    if(version<13)
+		    {
+			if(temp_mapscr->flags & fWHISTLE)
+			{
+			    temp_mapscr->flags7 |= (fWHISTLEPAL | fWHISTLEWATER);
+			}
+		    }
             }
             else
             {
@@ -10938,21 +10947,35 @@ int readmapscreen(PACKFILE *f, zquestheader *Header, mapscr *temp_mapscr, zcmap 
         }
     }
     
-    //add in the new whistle flags
-    if(version<13)
-    {
-        if(temp_mapscr->flags & fWHISTLE)
-        {
-            temp_mapscr->flags7 |= (fWHISTLEPAL | fWHISTLEWATER);
-        }
-    }
-    
     for(int m=0; m<MAXFFCS; m++)
     {
         // ffcScriptData used to be part of mapscr, and this was handled just above
         ffcScriptData[m].a[0] = 10000;
         ffcScriptData[m].a[1] = 10000;
     }
+	//Experimental npcstrings vector
+	if(version>=19)
+	{
+		if(!p_getc(&numnpcstr,f,true))                         
+		{
+			return qe_invalid;
+		}
+		//al_trace("numnpcstr: %d\n",numnpcstr);
+		temp_mapscr->npcstrings.resize(numnpcstr, 0);
+	
+		for(int k=0; k<(numnpcstr); k++)
+		{
+			if(!p_igetw(&(temp_mapscr->npcstrings[k]),f,true))
+			{
+				return qe_invalid;
+			}
+		}
+	}
+	else
+	{
+		temp_mapscr->numnpcstr = 1;
+		temp_mapscr->npcstrings.resize(1, 0);
+	}
     
     //Dodongos in 2.10 used the boss roar, not the dodongo sound. -Z
     //May be any version before 2.11. -Z
@@ -10965,6 +10988,7 @@ int readmapscreen(PACKFILE *f, zquestheader *Header, mapscr *temp_mapscr, zcmap 
 	}
     }
     */
+    
     
     return 0;
 }
